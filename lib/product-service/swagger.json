@@ -1,0 +1,249 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Product Service API",
+    "description": "A REST API for managing products with AWS Lambda and API Gateway",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Product Service Team",
+      "email": "team@productservice.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://pb1fhjdqq5.execute-api.us-east-1.amazonaws.com/prod",
+      "description": "Production server"
+    }
+  ],
+  "paths": {
+    "/products": {
+      "get": {
+        "summary": "Get all products",
+        "description": "Retrieves a list of all available products",
+        "operationId": "getProducts",
+        "tags": ["Products"],
+        "responses": {
+          "200": {
+            "description": "Successful response with list of products",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Product"
+                  }
+                },
+                "examples": {
+                  "products": {
+                    "summary": "Example product list",
+                    "value": [
+                      {
+                        "id": "7567ec4b-b10c-48c5-9345-fc73c48a80aa",
+                        "title": "ProductOne",
+                        "description": "Short Product Description1",
+                        "price": 24,
+                        "count": 5
+                      },
+                      {
+                        "id": "7567ec4b-b10c-48c5-9345-fc73c48a80ab",
+                        "title": "ProductNew",
+                        "description": "Short Product Description3",
+                        "price": 10,
+                        "count": 3
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "server_error": {
+                    "summary": "Server error example",
+                    "value": {
+                      "message": "Failed to retrieve products",
+                      "error": "Database connection timeout"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/products/{productId}": {
+      "get": {
+        "summary": "Get product by ID",
+        "description": "Retrieves a specific product by its unique identifier",
+        "operationId": "getProductById",
+        "tags": ["Products"],
+        "parameters": [
+          {
+            "name": "productId",
+            "in": "path",
+            "required": true,
+            "description": "Unique identifier of the product",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "7567ec4b-b10c-48c5-9345-fc73c48a80aa"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response with product details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Product"
+                },
+                "examples": {
+                  "product": {
+                    "summary": "Example product",
+                    "value": {
+                      "id": "7567ec4b-b10c-48c5-9345-fc73c48a80aa",
+                      "title": "ProductOne",
+                      "description": "Short Product Description1",
+                      "price": 24,
+                      "count": 5
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid or missing product ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "missing_id": {
+                    "summary": "Missing product ID",
+                    "value": {
+                      "message": "Product ID is required and must be valid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Product not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "not_found": {
+                    "summary": "Product not found",
+                    "value": {
+                      "message": "Product with ID 'non-existent-id' not found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "server_error": {
+                    "summary": "Server error example",
+                    "value": {
+                      "message": "Failed to retrieve product",
+                      "error": "Database connection timeout"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Product": {
+        "type": "object",
+        "required": ["id", "title", "description", "price", "count"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier for the product",
+            "example": "7567ec4b-b10c-48c5-9345-fc73c48a80aa"
+          },
+          "title": {
+            "type": "string",
+            "description": "Product title/name",
+            "minLength": 1,
+            "maxLength": 100,
+            "example": "ProductOne"
+          },
+          "description": {
+            "type": "string",
+            "description": "Product description",
+            "minLength": 1,
+            "maxLength": 500,
+            "example": "Short Product Description1"
+          },
+          "price": {
+            "type": "number",
+            "format": "float",
+            "description": "Product price in USD",
+            "minimum": 0,
+            "example": 24.99
+          },
+          "count": {
+            "type": "integer",
+            "description": "Available quantity in stock",
+            "minimum": 0,
+            "example": 5
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["message"],
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Error message describing what went wrong",
+            "example": "Product not found"
+          },
+          "error": {
+            "type": "string",
+            "description": "Additional error details (optional)",
+            "example": "Database connection timeout"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Products",
+      "description": "Operations related to product management"
+    }
+  ]
+}
+
