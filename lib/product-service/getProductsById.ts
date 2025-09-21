@@ -1,51 +1,33 @@
 import { products } from './products-data';
+import { ProductService } from './services/product.service';
+import { ResponseBuilder } from './services/response.service';
+
+const productService = new ProductService(products);
 
 export const main = async (event: any): Promise<any> => {
-  console.log('Lambda invoked with event:', JSON.stringify(event, null, 2));
+  console.log('getProductsById Lambda invoked with event:', JSON.stringify(event, null, 2));
 
   try {
     const productId = event.pathParameters?.productId;
 
-    if (!productId) {
-      return {
-        statusCode: 400,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ message: 'Product ID is required' }),
-      };
+    // Validate product ID
+    if (!productService.validateProductId(productId)) {
+      return ResponseBuilder.badRequest('Product ID is required and must be valid');
     }
 
-    const product = products.find(p => p.id === productId);
+    // Get product by ID
+    const product = productService.getProductById(productId);
 
     if (!product) {
-      return {
-        statusCode: 404,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ message: 'Product not found' }),
-      };
+      return ResponseBuilder.notFound(`Product with ID '${productId}' not found`);
     }
 
-    return {
-      statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(product),
-    };
+    return ResponseBuilder.success(product);
   } catch (error) {
     console.error('Error in getProductsById:', error);
-    return {
-      statusCode: 500,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        message: 'Internal server error',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      }),
-    };
+    return ResponseBuilder.internalServerError(
+      'Failed to retrieve product',
+      error instanceof Error ? error.message : 'Unknown error'
+    );
   }
 };

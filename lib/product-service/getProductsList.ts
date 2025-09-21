@@ -1,27 +1,20 @@
 import { products } from './products-data';
+import { ProductService } from './services/product.service';
+import { ResponseBuilder } from './services/response.service';
+
+const productService = new ProductService(products);
 
 export const main = async (event: any): Promise<any> => {
-  console.log('Lambda invoked with event:', JSON.stringify(event, null, 2));
+  console.log('getProductsList Lambda invoked with event:', JSON.stringify(event, null, 2));
 
   try {
-    return {
-      statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(products),
-    };
+    const allProducts = productService.getAllProducts();
+    return ResponseBuilder.success(allProducts);
   } catch (error) {
     console.error('Error in getProductsList:', error);
-    return {
-      statusCode: 500,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        message: 'Internal server error',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      }),
-    };
+    return ResponseBuilder.internalServerError(
+      'Failed to retrieve products',
+      error instanceof Error ? error.message : 'Unknown error'
+    );
   }
 };
