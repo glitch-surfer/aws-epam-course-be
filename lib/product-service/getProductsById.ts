@@ -1,8 +1,7 @@
-import { products } from './products-data';
-import { ProductService } from './services/product.service';
+import { DynamoDBService } from './services/dynamodb.service';
 import { ResponseBuilder } from './services/response.service';
 
-const productService = new ProductService(products);
+const dynamoDbService = new DynamoDBService();
 
 export const main = async (event: any): Promise<any> => {
   console.log('getProductsById Lambda invoked with event:', JSON.stringify(event, null, 2));
@@ -11,12 +10,12 @@ export const main = async (event: any): Promise<any> => {
     const productId = event.pathParameters?.productId;
 
     // Validate product ID
-    if (!productService.validateProductId(productId)) {
+    if (!productId || typeof productId !== 'string') {
       return ResponseBuilder.badRequest('Product ID is required and must be valid');
     }
 
-    // Get product by ID
-    const product = productService.getProductById(productId);
+    // Get product by ID from DynamoDB
+    const product = await dynamoDbService.getProductByIdWithStock(productId);
 
     if (!product) {
       return ResponseBuilder.notFound(`Product with ID '${productId}' not found`);

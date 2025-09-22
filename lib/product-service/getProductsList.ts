@@ -1,14 +1,13 @@
-import { products } from './products-data';
-import { ProductService } from './services/product.service';
+import { DynamoDBService } from './services/dynamodb.service';
 import { ResponseBuilder } from './services/response.service';
 
-const productService = new ProductService(products);
+const dynamoDbService = new DynamoDBService();
 
 export const main = async (event: any): Promise<any> => {
   console.log('getProductsList Lambda invoked with event:', JSON.stringify(event, null, 2));
 
   try {
-    const allProducts = productService.getAllProducts();
+    const allProducts = await dynamoDbService.getAllProductsWithStock();
     return ResponseBuilder.success(allProducts);
   } catch (error) {
     console.error('Error in getProductsList:', error);
