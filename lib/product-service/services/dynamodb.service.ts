@@ -137,49 +137,5 @@ export class DynamoDBService {
             throw new Error('Failed to create product in database');
         }
     }
-
-    async batchCreateProducts(products: Omit<ProductWithStock, 'id'>[]): Promise<void> {
-        try {
-            console.log(`Batch creating ${products.length} products`);
-            const {v4: uuidV4} = (await import('uuid'));
-
-            const productItems = products.map(product => ({
-                PutRequest: {
-                    Item: {
-                        id: uuidV4(),
-                        title: product.title,
-                        description: product.description,
-                        price: product.price,
-                    },
-                },
-            }));
-
-            const stockItems = productItems.map((item, index) => ({
-                PutRequest: {
-                    Item: {
-                        product_id: item.PutRequest.Item.id,
-                        count: products[index].count,
-                    },
-                },
-            }));
-
-            await this.dynamoDbClient.send(new BatchWriteCommand({
-                RequestItems: {
-                    [this.productsTableName]: productItems,
-                },
-            }));
-
-            await this.dynamoDbClient.send(new BatchWriteCommand({
-                RequestItems: {
-                    [this.stockTableName]: stockItems,
-                },
-            }));
-
-            console.log('Batch create completed successfully');
-        } catch (error) {
-            console.error('Error in batch create:', error);
-            throw new Error('Failed to batch create products');
-        }
-    }
 }
 
