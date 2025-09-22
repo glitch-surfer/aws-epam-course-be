@@ -1,5 +1,6 @@
 import {DynamoDBClient} from '@aws-sdk/client-dynamodb';
 import {BatchWriteCommand, DynamoDBDocumentClient, GetCommand, PutCommand, ScanCommand} from '@aws-sdk/lib-dynamodb';
+import {randomUUID} from 'crypto';
 
 export interface Product {
     id: string;
@@ -100,7 +101,7 @@ export class DynamoDBService {
 
     async createProduct(productData: Omit<ProductWithStock, 'id'>): Promise<ProductWithStock> {
         try {
-            const id = (await import('uuid')).v4();
+            const id = randomUUID();
             console.log(`Creating product with ID: ${id}`);
 
             const product: Product = {
@@ -138,4 +139,3 @@ export class DynamoDBService {
         }
     }
 }
-
