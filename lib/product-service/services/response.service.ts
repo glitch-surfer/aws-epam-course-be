@@ -7,6 +7,9 @@ export interface ApiResponse {
 export class ResponseBuilder {
   private static defaultHeaders = {
     'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Amz-Date, Authorization, X-Api-Key, X-Amz-Security-Token',
   };
 
   static success<T>(data: T, statusCode: number = 200): ApiResponse {
