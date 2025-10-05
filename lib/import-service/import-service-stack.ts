@@ -1,6 +1,7 @@
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
+import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 
 export class ImportServiceStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -24,6 +25,12 @@ export class ImportServiceStack extends cdk.Stack {
           allowedHeaders: ['*'],
         },
       ],
+    });
+
+    new s3deploy.BucketDeployment(this, 'DeployFolderStructure', {
+      sources: [s3deploy.Source.jsonData('uploaded/.keep', {})], // Creates an empty JSON file
+      destinationBucket: importBucket,
+      prune: false,
     });
 
     new cdk.CfnOutput(this, 'ImportBucketName', {
