@@ -1,5 +1,5 @@
 import { DynamoDBService } from './services/dynamodb.service';
-import { ResponseBuilder } from './services/response.service';
+import { ResponseBuilder } from '../shared/helpers/response.service';
 
 const dynamoDbService = new DynamoDBService();
 

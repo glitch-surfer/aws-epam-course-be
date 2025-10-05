@@ -1,4 +1,4 @@
-import { ResponseBuilder } from '../services/response.service';
+import { ResponseBuilder } from '../../shared/helpers/response.service';
 
 describe('ResponseBuilder', () => {
   describe('success', () => {
