@@ -4,6 +4,7 @@ import { Construct } from 'constructs';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
+import * as s3notifications from 'aws-cdk-lib/aws-s3-notifications';
 import * as path from 'path';
 
 export class ImportServiceStack extends cdk.Stack {
@@ -46,8 +47,25 @@ export class ImportServiceStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
     });
 
+    const importFileParserLambda = new lambda.Function(this, 'importFileParser', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'importFileParser.main',
+      code: lambda.Code.fromAsset(path.join(__dirname)),
+      environment: {
+        BUCKET_NAME: importBucket.bucketName,
+      },
+      timeout: cdk.Duration.seconds(30),
+    });
+
     importBucket.grantPut(importProductsFileLambda);
     importBucket.grantPutAcl(importProductsFileLambda);
+    importBucket.grantRead(importFileParserLambda);
+
+    importBucket.addEventNotification(
+      s3.EventType.OBJECT_CREATED,
+      new s3notifications.LambdaDestination(importFileParserLambda),
+      { prefix: 'uploaded/' }
+    );
 
     const api = new apigateway.RestApi(this, 'ImportServiceApi', {
       restApiName: 'Import Service API',
