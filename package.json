@@ -11,6 +11,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "cdk": "cdk",
+    "deploy": "npm run build && cdk deploy --all",
     "populate-db": "ts-node --esm scripts/populate-db-standalone.js",
     "clear-db": "ts-node --esm scripts/clear-db-standalone.js"
   },
@@ -25,11 +26,13 @@
     "typescript": "~5.6.3"
   },
   "dependencies": {
+    "@aws-cdk/aws-s3-deployment": "^1.203.0",
     "@aws-sdk/client-dynamodb": "^3.893.0",
     "@aws-sdk/lib-dynamodb": "^3.893.0",
     "@types/uuid": "^10.0.0",
     "aws-cdk-lib": "2.214.0",
     "constructs": "^10.0.0",
+    "csv-parser": "^3.2.0",
     "uuid": "^13.0.0"
   }
 }
