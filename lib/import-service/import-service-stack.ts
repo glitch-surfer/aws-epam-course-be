@@ -1,11 +1,13 @@
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cdk from 'aws-cdk-lib';
-import { Construct } from 'constructs';
+import {ArnFormat} from 'aws-cdk-lib';
+import {Construct} from 'constructs';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as s3notifications from 'aws-cdk-lib/aws-s3-notifications';
 import * as path from 'path';
+import * as sqs from 'aws-cdk-lib/aws-sqs';
 
 export class ImportServiceStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -37,6 +39,17 @@ export class ImportServiceStack extends cdk.Stack {
       prune: false,
     });
 
+    const catalogItemsQueue = sqs.Queue.fromQueueArn(
+      this,
+      'CatalogItemsQueueImport',
+      cdk.Stack.of(this).formatArn({
+        service: 'sqs',
+        resource: 'catalogItemsQueue',
+        resourceName: '',
+        arnFormat: ArnFormat.COLON_RESOURCE_NAME,
+      })
+    );
+
     const importProductsFileLambda = new lambda.Function(this, 'importProductsFile', {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'importProductsFile.main',
@@ -53,6 +66,7 @@ export class ImportServiceStack extends cdk.Stack {
       code: lambda.Code.fromAsset(path.join(__dirname)),
       environment: {
         BUCKET_NAME: importBucket.bucketName,
+        CATALOG_ITEMS_QUEUE_URL: catalogItemsQueue.queueUrl,
       },
       timeout: cdk.Duration.seconds(30),
     });
@@ -60,6 +74,7 @@ export class ImportServiceStack extends cdk.Stack {
     importBucket.grantPut(importProductsFileLambda);
     importBucket.grantPutAcl(importProductsFileLambda);
     importBucket.grantRead(importFileParserLambda);
+    catalogItemsQueue.grantSendMessages(importFileParserLambda);
 
     importBucket.addEventNotification(
       s3.EventType.OBJECT_CREATED,
