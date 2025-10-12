@@ -72,6 +72,12 @@ export class ProductServiceStack extends cdk.Stack {
       visibilityTimeout: cdk.Duration.seconds(60),
     });
 
+    new cdk.CfnOutput(this, 'CatalogItemsQueueArn', {
+      value: catalogItemsQueue.queueArn,
+      exportName: 'CatalogItemsQueueArn',
+    });
+
+
     const createProductTopic = new sns.Topic(this, 'CreateProductTopic', {
       topicName: 'createProductTopic',
     });
@@ -81,7 +87,7 @@ export class ProductServiceStack extends cdk.Stack {
     );
 
     createProductTopic.addSubscription(
-      new sns_subscriptions.EmailSubscription('marker661@gmail.com', {
+      new sns_subscriptions.EmailSubscription('marker661@yandex.ru', {
         filterPolicy: {
           hasExpensive: sns.SubscriptionFilter.stringFilter({
             allowlist: ['true'],

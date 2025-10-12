@@ -39,16 +39,13 @@ export class ImportServiceStack extends cdk.Stack {
       prune: false,
     });
 
+    const catalogItemsQueueArn = cdk.Fn.importValue('CatalogItemsQueueArn');
     const catalogItemsQueue = sqs.Queue.fromQueueArn(
-      this,
-      'CatalogItemsQueueImport',
-      cdk.Stack.of(this).formatArn({
-        service: 'sqs',
-        resource: 'catalogItemsQueue',
-        resourceName: '',
-        arnFormat: ArnFormat.COLON_RESOURCE_NAME,
-      })
+        this,
+        'CatalogItemsQueueImport',
+        catalogItemsQueueArn
     );
+
 
     const importProductsFileLambda = new lambda.Function(this, 'importProductsFile', {
       runtime: lambda.Runtime.NODEJS_20_X,
