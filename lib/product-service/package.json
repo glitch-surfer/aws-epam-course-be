@@ -1,0 +1,16 @@
+{
+  "name": "product-service",
+  "version": "1.0.0",
+  "description": "This is a Product Service implementation using AWS CDK with Lambda functions and API Gateway.",
+  "main": "catalogBatchProcess.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "types": "./catalogBatchProcess.d.ts",
+  "dependencies": {
+    "aws-sdk": "^2.1692.0"
+  }
+}

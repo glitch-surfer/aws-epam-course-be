@@ -9,8 +9,12 @@ import * as s3notifications from 'aws-cdk-lib/aws-s3-notifications';
 import * as path from 'path';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 
+export interface ImportServiceStackProps extends cdk.StackProps {
+  basicAuthorizerFn?: lambda.IFunction;
+}
+
 export class ImportServiceStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props?: ImportServiceStackProps) {
     super(scope, id, props);
 
     const importBucket = new s3.Bucket(this, 'ImportBucket', {
@@ -91,8 +95,33 @@ export class ImportServiceStack extends cdk.Stack {
 
     const importProductsFileIntegration = new apigateway.LambdaIntegration(importProductsFileLambda);
 
+    // Create or reference basic authorizer
+    let authorizerFn: lambda.IFunction | undefined = props?.basicAuthorizerFn;
+    if (!authorizerFn) {
+      // Try to import by CloudFormation export if not passed explicitly
+      try {
+        const fnArn = cdk.Fn.importValue('BasicAuthorizerFunctionArn');
+        authorizerFn = lambda.Function.fromFunctionArn(this, 'ImportedBasicAuthorizerFn', fnArn);
+      } catch (e) {
+        // ignore; authorization won't be attached
+      }
+    }
+
+    let methodOptions: apigateway.MethodOptions | undefined;
+    if (authorizerFn) {
+      const tokenAuthorizer = new apigateway.TokenAuthorizer(this, 'BasicTokenAuthorizer', {
+        handler: authorizerFn,
+        identitySource: 'method.request.header.Authorization',
+        resultsCacheTtl: cdk.Duration.seconds(0),
+      });
+      methodOptions = {
+        authorizer: tokenAuthorizer,
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
+      };
+    }
+
     const importResource = api.root.addResource('import');
-    importResource.addMethod('GET', importProductsFileIntegration);
+    importResource.addMethod('GET', importProductsFileIntegration, methodOptions);
 
     new cdk.CfnOutput(this, 'ImportBucketName', {
       value: importBucket.bucketName,
