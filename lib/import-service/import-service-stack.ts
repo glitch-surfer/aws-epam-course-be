@@ -1,6 +1,5 @@
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cdk from 'aws-cdk-lib';
-import {ArnFormat} from 'aws-cdk-lib';
 import {Construct} from 'constructs';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
@@ -8,9 +7,10 @@ import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as s3notifications from 'aws-cdk-lib/aws-s3-notifications';
 import * as path from 'path';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
+import * as logs from 'aws-cdk-lib/aws-logs';
 
 export interface ImportServiceStackProps extends cdk.StackProps {
-  basicAuthorizerFn?: lambda.IFunction;
+  basicAuthorizerArn?: string;
 }
 
 export class ImportServiceStack extends cdk.Stack {
@@ -83,6 +83,12 @@ export class ImportServiceStack extends cdk.Stack {
       { prefix: 'uploaded/' }
     );
 
+    // Create a log group for API Gateway access logs and method execution logs
+    const apiLogGroup = new logs.LogGroup(this, 'ImportServiceApiLogGroup', {
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
     const api = new apigateway.RestApi(this, 'ImportServiceApi', {
       restApiName: 'Import Service API',
       description: 'This API serves the Import Service Lambda functions.',
@@ -91,19 +97,66 @@ export class ImportServiceStack extends cdk.Stack {
         allowMethods: apigateway.Cors.ALL_METHODS,
         allowHeaders: ['*'],
       },
+      deployOptions: {
+        accessLogDestination: new apigateway.LogGroupLogDestination(apiLogGroup),
+        accessLogFormat: apigateway.AccessLogFormat.jsonWithStandardFields({
+          caller: true,
+          httpMethod: true,
+          ip: true,
+          protocol: true,
+          requestTime: true,
+          resourcePath: true,
+          responseLength: true,
+          status: true,
+          user: true,
+        }),
+        loggingLevel: apigateway.MethodLoggingLevel.INFO,
+        dataTraceEnabled: true,
+        metricsEnabled: true,
+        // Retain old deployments only while stack exists
+        stageName: 'prod',
+      },
+    });
+
+    // Ensure CORS headers on ALL gateway error responses (including authorizer failures)
+    const corsErrorResponseHeaders: { [key: string]: string } = {
+      'Access-Control-Allow-Origin': "'*'",
+      'Access-Control-Allow-Headers': "'*'",
+      'Access-Control-Allow-Methods': "'GET,POST,PUT,DELETE,OPTIONS'",
+    };
+    api.addGatewayResponse('Default4xxWithCors', {
+      type: apigateway.ResponseType.DEFAULT_4XX,
+      responseHeaders: corsErrorResponseHeaders,
+    });
+    api.addGatewayResponse('Default5xxWithCors', {
+      type: apigateway.ResponseType.DEFAULT_5XX,
+      responseHeaders: corsErrorResponseHeaders,
+    });
+    api.addGatewayResponse('UnauthorizedWithCors', {
+      type: apigateway.ResponseType.UNAUTHORIZED,
+      responseHeaders: corsErrorResponseHeaders,
+    });
+    api.addGatewayResponse('AccessDeniedWithCors', {
+      type: apigateway.ResponseType.ACCESS_DENIED,
+      responseHeaders: corsErrorResponseHeaders,
+    });
+    api.addGatewayResponse('AuthorizerFailureWithCors', {
+      type: apigateway.ResponseType.AUTHORIZER_FAILURE,
+      responseHeaders: corsErrorResponseHeaders,
+    });
+    api.addGatewayResponse('AuthorizerConfigErrorWithCors', {
+      type: apigateway.ResponseType.AUTHORIZER_CONFIGURATION_ERROR,
+      responseHeaders: corsErrorResponseHeaders,
     });
 
     const importProductsFileIntegration = new apigateway.LambdaIntegration(importProductsFileLambda);
 
-    // Create or reference basic authorizer
-    let authorizerFn: lambda.IFunction | undefined = props?.basicAuthorizerFn;
+    let authorizerFn: lambda.IFunction | undefined;
     if (!authorizerFn) {
-      // Try to import by CloudFormation export if not passed explicitly
       try {
-        const fnArn = cdk.Fn.importValue('BasicAuthorizerFunctionArn');
-        authorizerFn = lambda.Function.fromFunctionArn(this, 'ImportedBasicAuthorizerFn', fnArn);
+        authorizerFn = lambda.Function.fromFunctionArn(this, 'ImportedBasicAuthorizerFn', props?.basicAuthorizerArn!);
       } catch (e) {
-        // ignore; authorization won't be attached
+        console.warn('BasicAuthorizerFunctionArn not found. Proceeding without authorizer.');
       }
     }
 

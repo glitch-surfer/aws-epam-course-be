@@ -9,7 +9,8 @@ export interface AuthorizationServiceStackProps extends cdk.StackProps {
 }
 
 export class AuthorizationServiceStack extends cdk.Stack {
-    public readonly basicAuthorizerFn: lambda.Function;
+    public readonly basicAuthorizerArn: string;
+    public readonly lambda: lambda.Function;
 
     constructor(scope: Construct, id: string, props?: AuthorizationServiceStackProps) {
         super(scope, id, props);
@@ -25,13 +26,13 @@ export class AuthorizationServiceStack extends cdk.Stack {
         const credentialsEnv: Record<string, string> = {};
         Object.entries(process.env).forEach(([key, value]) => {
             if (!value) return;
-            // Lambda env variable name rules: must match /[a-zA-Z_][a-zA-Z0-9_]+/
-            if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)) {
-                credentialsEnv[key] = value;
+            if (key.startsWith('CRED_')) {
+                const username = key.replace('CRED_', '');
+                credentialsEnv[username] = value;
             }
         });
 
-        this.basicAuthorizerFn = new lambda.Function(this, 'basicAuthorizer', {
+        this.lambda = new lambda.Function(this, 'basicAuthorizer', {
             runtime: lambda.Runtime.NODEJS_20_X,
             handler: 'basicAuthorizer.main',
             code: lambda.Code.fromAsset(path.join(__dirname)),
@@ -40,8 +41,10 @@ export class AuthorizationServiceStack extends cdk.Stack {
             description: 'Basic token authorizer that validates user:password from environment variables.'
         });
 
+        this.basicAuthorizerArn = this.lambda.functionArn;
+
         new cdk.CfnOutput(this, 'BasicAuthorizerFunctionArn', {
-            value: this.basicAuthorizerFn.functionArn,
+            value: this.basicAuthorizerArn,
             exportName: 'BasicAuthorizerFunctionArn'
         });
     }
