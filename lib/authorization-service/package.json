@@ -1,0 +1,15 @@
+{
+  "name": "authorization-service",
+  "version": "1.0.0",
+  "main": "authorization-service-stack.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "types": "./authorization-service-stack.d.ts",
+  "description": "",
+  "dependencies": {
+    "dotenv": "^17.2.3"
+  }
+}

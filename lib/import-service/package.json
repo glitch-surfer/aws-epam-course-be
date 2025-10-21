@@ -1,0 +1,16 @@
+{
+  "name": "import-service",
+  "version": "1.0.0",
+  "main": "import-service-stack.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "types": "./import-service-stack.d.ts",
+  "description": "",
+  "dependencies": {
+    "csv-parser": "^3.2.0"
+  }
+}
