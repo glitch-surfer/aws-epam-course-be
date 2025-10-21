@@ -8,187 +8,145 @@ import * as s3notifications from 'aws-cdk-lib/aws-s3-notifications';
 import * as path from 'path';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as logs from 'aws-cdk-lib/aws-logs';
-
-export interface ImportServiceStackProps extends cdk.StackProps {
-  basicAuthorizerArn?: string;
-}
+import * as iam from 'aws-cdk-lib/aws-iam';
 
 export class ImportServiceStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: ImportServiceStackProps) {
-    super(scope, id, props);
+    constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+        super(scope, id, props);
 
-    const importBucket = new s3.Bucket(this, 'ImportBucket', {
-      bucketName: `import-service-bucket-${this.account}-${this.region}`,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      versioned: false,
-      publicReadAccess: false,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      cors: [
-        {
-          allowedMethods: [
-            s3.HttpMethods.GET,
-            s3.HttpMethods.POST,
-            s3.HttpMethods.PUT,
-            s3.HttpMethods.DELETE,
-          ],
-          allowedOrigins: ['*'],
-          allowedHeaders: ['*'],
-        },
-      ],
-    });
+        // API Gateway CloudWatch role
+        const apiGwLogsRole = new iam.Role(this, 'ApiGatewayCloudWatchLogsRole', {
+            assumedBy: new iam.ServicePrincipal('apigateway.amazonaws.com'),
+            managedPolicies: [
+                iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonAPIGatewayPushToCloudWatchLogs'),
+            ],
+        });
 
-    new s3deploy.BucketDeployment(this, 'DeployFolderStructure', {
-      sources: [s3deploy.Source.jsonData('uploaded/.keep', {})], // Creates an empty JSON file
-      destinationBucket: importBucket,
-      prune: false,
-    });
+        new apigateway.CfnAccount(this, 'ApiGatewayAccount', {
+            cloudWatchRoleArn: apiGwLogsRole.roleArn,
+        });
 
-    const catalogItemsQueueArn = cdk.Fn.importValue('CatalogItemsQueueArn');
-    const catalogItemsQueue = sqs.Queue.fromQueueArn(
-        this,
-        'CatalogItemsQueueImport',
-        catalogItemsQueueArn
-    );
+        // S3 Bucket
+        const importBucket = new s3.Bucket(this, 'ImportBucket', {
+            bucketName: `import-service-bucket-${this.account}-${this.region}`,
+            removalPolicy: cdk.RemovalPolicy.DESTROY,
+            cors: [{
+                allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.POST, s3.HttpMethods.PUT],
+                allowedOrigins: ['*'],
+                allowedHeaders: ['*'],
+            }],
+        });
 
+        // Create uploaded folder
+        new s3deploy.BucketDeployment(this, 'DeployFolderStructure', {
+            sources: [s3deploy.Source.jsonData('uploaded/.keep', {})],
+            destinationBucket: importBucket,
+            prune: false,
+        });
 
-    const importProductsFileLambda = new lambda.Function(this, 'importProductsFile', {
-      runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'importProductsFile.main',
-      code: lambda.Code.fromAsset(path.join(__dirname)),
-      environment: {
-        BUCKET_NAME: importBucket.bucketName,
-      },
-      timeout: cdk.Duration.seconds(30),
-    });
+        // Import SQS queue from catalog service
+        const catalogItemsQueueArn = cdk.Fn.importValue('CatalogItemsQueueArn');
+        const catalogItemsQueue = sqs.Queue.fromQueueArn(
+            this,
+            'CatalogItemsQueueImport',
+            catalogItemsQueueArn
+        );
 
-    const importFileParserLambda = new lambda.Function(this, 'importFileParser', {
-      runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'importFileParser.main',
-      code: lambda.Code.fromAsset(path.join(__dirname)),
-      environment: {
-        BUCKET_NAME: importBucket.bucketName,
-        CATALOG_ITEMS_QUEUE_URL: catalogItemsQueue.queueUrl,
-      },
-      timeout: cdk.Duration.seconds(30),
-    });
+        // Lambda functions
+        const importProductsFileLambda = new lambda.Function(this, 'importProductsFile', {
+            runtime: lambda.Runtime.NODEJS_20_X,
+            handler: 'importProductsFile.main',
+            code: lambda.Code.fromAsset(path.join(__dirname)),
+            environment: {
+                BUCKET_NAME: importBucket.bucketName,
+            },
+            timeout: cdk.Duration.seconds(30),
+        });
 
-    importBucket.grantPut(importProductsFileLambda);
-    importBucket.grantPutAcl(importProductsFileLambda);
-    importBucket.grantRead(importFileParserLambda);
-    catalogItemsQueue.grantSendMessages(importFileParserLambda);
+        const importFileParserLambda = new lambda.Function(this, 'importFileParser', {
+            runtime: lambda.Runtime.NODEJS_20_X,
+            handler: 'importFileParser.main',
+            code: lambda.Code.fromAsset(path.join(__dirname)),
+            environment: {
+                BUCKET_NAME: importBucket.bucketName,
+                CATALOG_ITEMS_QUEUE_URL: catalogItemsQueue.queueUrl,
+            },
+            timeout: cdk.Duration.seconds(30),
+        });
 
-    importBucket.addEventNotification(
-      s3.EventType.OBJECT_CREATED,
-      new s3notifications.LambdaDestination(importFileParserLambda),
-      { prefix: 'uploaded/' }
-    );
+        // Grant permissions
+        importBucket.grantPut(importProductsFileLambda);
+        importBucket.grantPutAcl(importProductsFileLambda);
+        importBucket.grantRead(importFileParserLambda);
+        catalogItemsQueue.grantSendMessages(importFileParserLambda);
 
-    // Create a log group for API Gateway access logs and method execution logs
-    const apiLogGroup = new logs.LogGroup(this, 'ImportServiceApiLogGroup', {
-      retention: logs.RetentionDays.ONE_WEEK,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
+        // S3 event notification
+        importBucket.addEventNotification(
+            s3.EventType.OBJECT_CREATED,
+            new s3notifications.LambdaDestination(importFileParserLambda),
+            {prefix: 'uploaded/'}
+        );
 
-    const api = new apigateway.RestApi(this, 'ImportServiceApi', {
-      restApiName: 'Import Service API',
-      description: 'This API serves the Import Service Lambda functions.',
-      defaultCorsPreflightOptions: {
-        allowOrigins: apigateway.Cors.ALL_ORIGINS,
-        allowMethods: apigateway.Cors.ALL_METHODS,
-        allowHeaders: ['*'],
-      },
-      deployOptions: {
-        accessLogDestination: new apigateway.LogGroupLogDestination(apiLogGroup),
-        accessLogFormat: apigateway.AccessLogFormat.jsonWithStandardFields({
-          caller: true,
-          httpMethod: true,
-          ip: true,
-          protocol: true,
-          requestTime: true,
-          resourcePath: true,
-          responseLength: true,
-          status: true,
-          user: true,
-        }),
-        loggingLevel: apigateway.MethodLoggingLevel.INFO,
-        dataTraceEnabled: true,
-        metricsEnabled: true,
-        // Retain old deployments only while stack exists
-        stageName: 'prod',
-      },
-    });
+        // API Gateway
+        const apiLogGroup = new logs.LogGroup(this, 'ImportServiceApiLogGroup', {
+            retention: logs.RetentionDays.ONE_WEEK,
+            removalPolicy: cdk.RemovalPolicy.DESTROY,
+        });
 
-    // Ensure CORS headers on ALL gateway error responses (including authorizer failures)
-    const corsErrorResponseHeaders: { [key: string]: string } = {
-      'Access-Control-Allow-Origin': "'*'",
-      'Access-Control-Allow-Headers': "'*'",
-      'Access-Control-Allow-Methods': "'GET,POST,PUT,DELETE,OPTIONS'",
-    };
-    api.addGatewayResponse('Default4xxWithCors', {
-      type: apigateway.ResponseType.DEFAULT_4XX,
-      responseHeaders: corsErrorResponseHeaders,
-    });
-    api.addGatewayResponse('Default5xxWithCors', {
-      type: apigateway.ResponseType.DEFAULT_5XX,
-      responseHeaders: corsErrorResponseHeaders,
-    });
-    api.addGatewayResponse('UnauthorizedWithCors', {
-      type: apigateway.ResponseType.UNAUTHORIZED,
-      responseHeaders: corsErrorResponseHeaders,
-    });
-    api.addGatewayResponse('AccessDeniedWithCors', {
-      type: apigateway.ResponseType.ACCESS_DENIED,
-      responseHeaders: corsErrorResponseHeaders,
-    });
-    api.addGatewayResponse('AuthorizerFailureWithCors', {
-      type: apigateway.ResponseType.AUTHORIZER_FAILURE,
-      responseHeaders: corsErrorResponseHeaders,
-    });
-    api.addGatewayResponse('AuthorizerConfigErrorWithCors', {
-      type: apigateway.ResponseType.AUTHORIZER_CONFIGURATION_ERROR,
-      responseHeaders: corsErrorResponseHeaders,
-    });
+        const api = new apigateway.RestApi(this, 'ImportServiceApi', {
+            restApiName: 'Import Service API',
+            description: 'This API serves the Import Service Lambda functions.',
+            defaultCorsPreflightOptions: {
+                allowOrigins: apigateway.Cors.ALL_ORIGINS,
+                allowMethods: apigateway.Cors.ALL_METHODS,
+                allowHeaders: ['*'],
+            },
+            deployOptions: {
+                accessLogDestination: new apigateway.LogGroupLogDestination(apiLogGroup),
+                accessLogFormat: apigateway.AccessLogFormat.jsonWithStandardFields(),
+                loggingLevel: apigateway.MethodLoggingLevel.INFO,
+                stageName: 'prod',
+            },
+        });
 
-    const importProductsFileIntegration = new apigateway.LambdaIntegration(importProductsFileLambda);
+        // Import authorizer Lambda using cross-stack reference
+        const authorizerFunctionArn = cdk.Fn.importValue('BasicAuthorizerFunctionArn');
+        const authorizerFunction = lambda.Function.fromFunctionArn(
+            this,
+            'ImportedAuthorizerFunction',
+            authorizerFunctionArn
+        );
 
-    let authorizerFn: lambda.IFunction | undefined;
-    if (!authorizerFn) {
-      try {
-        authorizerFn = lambda.Function.fromFunctionArn(this, 'ImportedBasicAuthorizerFn', props?.basicAuthorizerArn!);
-      } catch (e) {
-        console.warn('BasicAuthorizerFunctionArn not found. Proceeding without authorizer.');
-      }
+        // Create TokenAuthorizer
+        const tokenAuthorizer = new apigateway.TokenAuthorizer(this, 'BasicTokenAuthorizer', {
+            handler: authorizerFunction,
+            identitySource: 'method.request.header.Authorization',
+            resultsCacheTtl: cdk.Duration.seconds(0),
+        });
+
+        // API Resources and Methods
+        const importProductsFileIntegration = new apigateway.LambdaIntegration(importProductsFileLambda);
+        const importResource = api.root.addResource('import');
+
+        importResource.addMethod('GET', importProductsFileIntegration, {
+            authorizer: tokenAuthorizer,
+            authorizationType: apigateway.AuthorizationType.CUSTOM,
+        });
+
+        // Outputs
+
+        new cdk.CfnOutput(this, 'ImportBucketName', {
+            value: importBucket.bucketName,
+            description: 'S3 Bucket name for import service',
+        });
+
+        new cdk.CfnOutput(this, 'ImportBucketArn', {
+            value: importBucket.bucketArn,
+            description: 'S3 Bucket ARN for import service',
+        });
+
+        new cdk.CfnOutput(this, 'ImportServiceApiUrl', {
+            value: api.url,
+        });
     }
-
-    let methodOptions: apigateway.MethodOptions | undefined;
-    if (authorizerFn) {
-      const tokenAuthorizer = new apigateway.TokenAuthorizer(this, 'BasicTokenAuthorizer', {
-        handler: authorizerFn,
-        identitySource: 'method.request.header.Authorization',
-        resultsCacheTtl: cdk.Duration.seconds(0),
-      });
-      methodOptions = {
-        authorizer: tokenAuthorizer,
-        authorizationType: apigateway.AuthorizationType.CUSTOM,
-      };
-    }
-
-    const importResource = api.root.addResource('import');
-    importResource.addMethod('GET', importProductsFileIntegration, methodOptions);
-
-    new cdk.CfnOutput(this, 'ImportBucketName', {
-      value: importBucket.bucketName,
-      description: 'S3 Bucket name for import service',
-    });
-
-    new cdk.CfnOutput(this, 'ImportBucketArn', {
-      value: importBucket.bucketArn,
-      description: 'S3 Bucket ARN for import service',
-    });
-
-    new cdk.CfnOutput(this, 'ImportServiceApiUrl', {
-      value: api.url,
-      description: 'Import Service API Gateway URL',
-    });
-  }
 }
